@@ -144,7 +144,7 @@ document.addEventListener("DOMContentLoaded", () => {
     if (e.key === "Enter") downloadVideo();
   });
 
-  // === Quality options handling ===
+  // === Quality options handling === 
   function populateQualities() {
     formatSelect.innerHTML = "";
     if (formatType.value === "mp4") {
