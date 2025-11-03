@@ -141,9 +141,7 @@ def run_download(task_id, url, fmt, quality):
             }]
         })
     else:
-        if quality == "1080p":
-            ydl_opts["format"] = "bestvideo[height<=1080]+bestaudio/best"
-        elif quality == "720p":
+        if quality == "720p":
             ydl_opts["format"] = "bestvideo[height<=720]+bestaudio/best"
         elif quality == "480p":
             ydl_opts["format"] = "bestvideo[height<=480]+bestaudio/best"
