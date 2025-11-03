@@ -1,0 +1,9 @@
+{
+  "build": {
+    "builder": "Python",
+    "buildCommand": "apt-get update && apt-get install -y ffmpeg && pip install -r requirements.txt"
+  },
+  "deploy": {
+    "startCommand": "gunicorn app:app"
+  }
+}
