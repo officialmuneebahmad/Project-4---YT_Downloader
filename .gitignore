@@ -1,1 +1,5 @@
-cookies.txt
+# ignore cookies and local secrets
+cookies/
+cookies/*.txt
+*.cookies.txt
+.env
