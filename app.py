@@ -8,6 +8,9 @@ import time
 
 app = Flask(__name__, static_folder='static', template_folder='templates')
 
+app.config["SEND_FILE_MAX_AGE_DEFAULT"] = 0
+app.config["JSONIFY_PRETTYPRINT_REGULAR"] = False
+
 ALLOWED_DOMAINS = ("youtube.com", "youtu.be")
 DOWNLOADS = {}  # {task_id: {"progress": int, "status": str, "filepath": str, "error": str}}
 
