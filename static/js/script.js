@@ -148,7 +148,7 @@ document.addEventListener("DOMContentLoaded", () => {
   function populateQualities() {
     formatSelect.innerHTML = "";
     if (formatType.value === "mp4") {
-      ["1080p", "480p"].forEach((q) => {
+      ["720p", "480p"].forEach((q) => {
         const opt = document.createElement("option");
         opt.value = q;
         opt.textContent = q;
