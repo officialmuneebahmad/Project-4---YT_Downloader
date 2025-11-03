@@ -3,3 +3,5 @@ cookies/
 cookies/*.txt
 *.cookies.txt
 .env
+cookies.txt
+COOKIE_FILE_CONTENTS.txt
