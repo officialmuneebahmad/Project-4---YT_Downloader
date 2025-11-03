@@ -4,7 +4,7 @@
 ## Setup 
 
 
-1. Create a virtualenv and install dependencies:
+1. Create a virtualenv and install dependencies: 
 
 
 ```bash
