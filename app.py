@@ -6,35 +6,44 @@ import shutil
 import threading
 import time
 
-app = Flask(__name__, static_folder='static', template_folder='templates')
-
-# --- [ COOKIE SUPPORT for Render + Local ] ---
-# If running on Render, set COOKIE_FILE_CONTENTS in your Render environment variables.
-# Locally, just drop a cookies.txt next to this file.
-cookie_path = os.path.join(tempfile.gettempdir(), "cookies.txt")
+# ==============================================================
+#  COOKIE HANDLING (Render + Local)
+# ==============================================================
+cookie_path = os.path.join(tempfile.gettempdir(), "youtube_cookies.txt")
 cookie_env = os.getenv("COOKIE_FILE_CONTENTS")
 
 if cookie_env:
+    # Render will inject cookies via environment variable
     with open(cookie_path, "w", encoding="utf-8") as f:
         f.write(cookie_env)
+    print(f"✅ Loaded YouTube cookies from environment into {cookie_path}")
 elif os.path.exists("cookies.txt"):
+    # Local development: use cookies.txt from project root
     cookie_path = os.path.join(os.getcwd(), "cookies.txt")
+    print("✅ Using local cookies.txt")
 else:
     cookie_path = None
-# --- [ END COOKIE SUPPORT ] ---
+    print("⚠️ No cookies file found. Login-required videos may fail.")
 
+# ==============================================================
+#  FLASK APP SETUP
+# ==============================================================
+app = Flask(__name__, static_folder='static', template_folder='templates')
 app.config["SEND_FILE_MAX_AGE_DEFAULT"] = 0
 app.config["JSONIFY_PRETTYPRINT_REGULAR"] = False
 
 ALLOWED_DOMAINS = ("youtube.com", "youtu.be")
 DOWNLOADS = {}  # {task_id: {"progress": int, "status": str, "filepath": str, "error": str}}
 
-
+# ==============================================================
+#  VALIDATION
+# ==============================================================
 def is_allowed_url(url: str) -> bool:
-    if not url or not url.startswith(('http://', 'https://')):
-        return False
-    return any(domain in url for domain in ALLOWED_DOMAINS)
+    return url.startswith(('http://', 'https://')) and any(domain in url for domain in ALLOWED_DOMAINS)
 
+# ==============================================================
+#  ROUTES
+# ==============================================================
 
 @app.route('/')
 def index():
@@ -43,7 +52,7 @@ def index():
 
 @app.route('/formats', methods=['POST'])
 def get_formats():
-    """Return available video/audio formats for a given URL."""
+    """Fetch available video/audio formats for a given YouTube URL."""
     data = request.get_json() or {}
     url = data.get('url', '').strip()
 
@@ -58,22 +67,21 @@ def get_formats():
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
             info = ydl.extract_info(url, download=False)
 
-        video_formats = []
-        audio_formats = []
+        video_formats, audio_formats = [], []
 
         for f in info.get('formats', []):
             if f.get('vcodec') != 'none' and f.get('acodec') != 'none':
                 video_formats.append({
                     'format_id': f['format_id'],
                     'ext': f['ext'],
-                    'resolution': f.get('resolution') or f"{f.get('height','?')}p",
+                    'resolution': f.get('resolution') or f"{f.get('height', '?')}p",
                     'filesize': f.get('filesize')
                 })
             elif f.get('vcodec') != 'none':
                 video_formats.append({
                     'format_id': f['format_id'],
                     'ext': f['ext'],
-                    'resolution': f.get('resolution') or f"{f.get('height','?')}p",
+                    'resolution': f.get('resolution') or f"{f.get('height', '?')}p",
                     'filesize': f.get('filesize')
                 })
             elif f.get('acodec') != 'none':
@@ -95,7 +103,10 @@ def get_formats():
         return jsonify({'error': f'Failed to fetch formats: {str(e)}'}), 500
 
 
-def run_download(task_id, url, fmt, format_id):
+# ==============================================================
+#  DOWNLOAD THREAD
+# ==============================================================
+def run_download(task_id, url, fmt, quality):
     tmpdir = tempfile.mkdtemp(prefix="ydl_")
     DOWNLOADS[task_id] = {"progress": 0, "status": "downloading", "tmpdir": tmpdir}
 
@@ -103,8 +114,7 @@ def run_download(task_id, url, fmt, format_id):
         if d["status"] == "downloading":
             total = d.get("total_bytes") or d.get("total_bytes_estimate") or 0
             downloaded = d.get("downloaded_bytes", 0)
-            percent = int(downloaded / total * 100) if total else 0
-            DOWNLOADS[task_id]["progress"] = percent
+            DOWNLOADS[task_id]["progress"] = int(downloaded / total * 100) if total else 0
         elif d["status"] == "finished":
             DOWNLOADS[task_id]["progress"] = 95
 
@@ -116,47 +126,49 @@ def run_download(task_id, url, fmt, format_id):
         "noplaylist": True,
     }
 
-    # ✅ Add cookies if present
+    # ✅ Use cookies if available
     if cookie_path and os.path.exists(cookie_path):
         ydl_opts["cookiefile"] = cookie_path
 
-    try:
-        if fmt == "mp3":
-            ydl_opts.update({
-                "format": "bestaudio/best",
-                "postprocessors": [{
-                    "key": "FFmpegExtractAudio",
-                    "preferredcodec": "mp3",
-                    "preferredquality": "192" if "128" in (format_id or "") else "320",
-                }]
-            })
+    # ✅ Format handling
+    if fmt == "mp3":
+        ydl_opts.update({
+            "format": "bestaudio/best",
+            "postprocessors": [{
+                "key": "FFmpegExtractAudio",
+                "preferredcodec": "mp3",
+                "preferredquality": "192" if "128" in (quality or "") else "320",
+            }]
+        })
+    else:
+        if quality == "1080p":
+            ydl_opts["format"] = "bestvideo[height<=1080]+bestaudio/best"
+        elif quality == "720p":
+            ydl_opts["format"] = "bestvideo[height<=720]+bestaudio/best"
+        elif quality == "480p":
+            ydl_opts["format"] = "bestvideo[height<=480]+bestaudio/best"
         else:
-            if format_id == "720p":
-                ydl_opts["format"] = "bestvideo[height<=720]+bestaudio/best"
-            elif format_id == "480p":
-                ydl_opts["format"] = "bestvideo[height<=480]+bestaudio/best"
-            else:
-                ydl_opts["format"] = "bestvideo+bestaudio/best"
+            ydl_opts["format"] = "bestvideo+bestaudio/best"
 
+    try:
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-            ydl.extract_info(url, download=True)
+            info = ydl.extract_info(url, download=True)
 
         files = [os.path.join(tmpdir, f) for f in os.listdir(tmpdir)]
         if not files:
-            DOWNLOADS[task_id]["status"] = "error"
-            DOWNLOADS[task_id]["error"] = "No file produced."
-            return
+            raise Exception("No output file found.")
 
-        files.sort(key=lambda p: os.path.getsize(p), reverse=True)
-        DOWNLOADS[task_id]["filepath"] = files[0]
-        DOWNLOADS[task_id]["status"] = "finished"
-        DOWNLOADS[task_id]["progress"] = 100
+        filepath = max(files, key=os.path.getsize)
+        DOWNLOADS[task_id].update({"filepath": filepath, "status": "finished", "progress": 100})
 
     except Exception as e:
-        DOWNLOADS[task_id]["status"] = "error"
-        DOWNLOADS[task_id]["error"] = str(e)
+        DOWNLOADS[task_id].update({"status": "error", "error": str(e)})
+        print("❌ Download error:", e)
 
 
+# ==============================================================
+#  DOWNLOAD ENDPOINT
+# ==============================================================
 @app.route('/download', methods=['POST'])
 def download():
     data = request.get_json() or {}
@@ -177,23 +189,17 @@ def download():
     return jsonify({'task_id': task_id})
 
 
+# ==============================================================
+#  PROGRESS ENDPOINT
+# ==============================================================
 @app.route('/progress/<task_id>')
 def progress(task_id):
     def generate():
-        retries = 0
-        while retries < 5:
-            task = DOWNLOADS.get(task_id)
-            if task:
-                break
-            retries += 1
-            time.sleep(0.5)
-
-            task = DOWNLOADS.get(task_id)
-        if not task:
-            yield 'data: {"status":"error","message":"Invalid task id"}\n\n'
-            return
-
         while True:
+            task = DOWNLOADS.get(task_id)
+            if not task:
+                yield 'data: {"status":"error","message":"Invalid task id"}\n\n'
+                break
             yield f'data: {{"progress": {task["progress"]}, "status": "{task["status"]}"}}\n\n'
             if task['status'] in ('finished', 'error'):
                 break
@@ -201,6 +207,9 @@ def progress(task_id):
     return Response(generate(), mimetype='text/event-stream')
 
 
+# ==============================================================
+#  FETCH ENDPOINT
+# ==============================================================
 @app.route('/fetch/<task_id>')
 def fetch(task_id):
     task = DOWNLOADS.get(task_id)
@@ -227,13 +236,11 @@ def fetch(task_id):
     return send_file(filepath, as_attachment=True)
 
 
+# ==============================================================
+#  MAIN
+# ==============================================================
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=int(os.environ.get('PORT', 5000)))
-
-
-
-
-
 
 
 
