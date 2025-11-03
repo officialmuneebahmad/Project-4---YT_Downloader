@@ -90,6 +90,11 @@ document.addEventListener("DOMContentLoaded", () => {
         return;
       }
 
+      // Wait 1 second before starting progress stream
+      setTimeout(() => {
+        monitorProgress(taskId);
+      }, 1000);
+
       // Start listening for progress updates
       const eventSrc = new EventSource(`/progress/${taskId}`);
       eventSrc.onmessage = (e) => {

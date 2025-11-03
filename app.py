@@ -131,8 +131,8 @@ def run_download(task_id, url, fmt, format_id):
                 }]
             })
         else:
-            if format_id == "1080p":
-                ydl_opts["format"] = "bestvideo[height<=1080]+bestaudio/best"
+            if format_id == "720p":
+                ydl_opts["format"] = "bestvideo[height<=720]+bestaudio/best"
             elif format_id == "480p":
                 ydl_opts["format"] = "bestvideo[height<=480]+bestaudio/best"
             else:
@@ -180,11 +180,20 @@ def download():
 @app.route('/progress/<task_id>')
 def progress(task_id):
     def generate():
-        while True:
+        retries = 0
+        while retries < 5:
             task = DOWNLOADS.get(task_id)
-            if not task:
-                yield 'data: {"status":"error","message":"Invalid task id"}\n\n'
+            if task:
                 break
+            retries += 1
+            time.sleep(0.5)
+
+            task = DOWNLOADS.get(task_id)
+        if not task:
+            yield 'data: {"status":"error","message":"Invalid task id"}\n\n'
+            return
+
+        while True:
             yield f'data: {{"progress": {task["progress"]}, "status": "{task["status"]}"}}\n\n'
             if task['status'] in ('finished', 'error'):
                 break
