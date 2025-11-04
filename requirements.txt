@@ -4,4 +4,5 @@ gunicorn==23.0.0
 validators==0.22.0
 ffmpeg-python==0.2.0
 requests
+python-dotenv
 
